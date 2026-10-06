@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Banking — Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div><span class="logo">🏦 SMART BANK</span> <span class="who" style="margin-left:14px" id="welcome"></span></div>
+  <div class="right"><button class="btn btn-ghost btn-sm" onclick="loadAll()">↻ Refresh</button>
+  <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button></div>
+</div>
+
+<div class="container">
+
+  <div class="section-title">My Accounts</div>
+  <div class="cards-grid" id="accGrid"></div>
+  <div class="actions-row">
+    <button class="btn btn-primary" onclick="openModal('mOpenAcc')">＋ Open New Account</button>
+    <button class="btn btn-ghost" onclick="openModal('mDeposit')">⬇ Deposit</button>
+    <button class="btn btn-ghost" onclick="openModal('mWithdraw')">⬆ Withdraw</button>
+    <button class="btn btn-ghost" onclick="openModal('mTransfer')">⇄ Transfer Money</button>
+    <button class="btn btn-ghost" onclick="openModal('mFd')">🔒 Open Fixed Deposit</button>
+  </div>
+
+  <div class="section-title">Fixed Deposits</div>
+  <div class="cards-grid" id="fdGrid"></div>
+
+  <div class="section-title">Transaction History</div>
+  <div class="searchbar">
+    <select id="txnFilter" style="max-width:280px" onchange="loadTxns()"><option value="">All accounts</option></select>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date &amp; Time</th><th>Account</th><th>Type</th><th>Details</th>
+      <th>Related Acc.</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance After</th></tr></thead>
+      <tbody id="txnBody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-overlay" id="mOpenAcc"><div class="modal">
+  <h3>Open a New Account</h3>
+  <div class="err" id="mOpenAccErr"></div>
+  <label>Account type</label>
+  <select id="oaType">
+    <option value="savings">Savings — 3.5% p.a. interest, min balance ₹500</option>
+    <option value="current">Current — for business, no interest, no min balance</option>
+  </select>
+  <label>Initial deposit (₹) — optional</label>
+  <input id="oaInit" type="number" min="0" step="0.01" placeholder="0.00">
+  <div class="hint">Fixed Deposits are opened from the “Open Fixed Deposit” button.</div>
+  <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+  <button class="btn btn-primary" onclick="submitOpenAcc()">Create Account</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mDeposit"><div class="modal">
+  <h3>Deposit Money</h3>
+  <div class="err" id="mDepositErr"></div>
+  <label>Into account</label><select id="dpAcc"></select>
+  <label>Amount (₹)</label><input id="dpAmt" type="number" min="1" step="0.01" placeholder="e.g. 5000">
+  <label>Note (optional)</label><input id="dpNote" placeholder="e.g. Cash deposit">
+  <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+  <button class="btn btn-primary" onclick="submitMoney('/api/deposit','dp','Deposited')">Deposit</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mWithdraw"><div class="modal">
+  <h3>Withdraw Money</h3>
+  <div class="err" id="mWithdrawErr"></div>
+  <label>From account</label><select id="dpAcc2"></select>
+  <label>Amount (₹)</label><input id="dp2Amt" type="number" min="1" step="0.01" placeholder="e.g. 2000">
+  <label>Note (optional)</label><input id="dp2Note" placeholder="e.g. ATM withdrawal">
+  <div class="hint">Savings accounts must keep ₹500 minimum balance.</div>
+  <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+  <button class="btn btn-primary" onclick="submitMoney('/api/withdraw','dp2','Withdrawn')">Withdraw</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mTransfer"><div class="modal">
+  <h3>Transfer Money</h3>
+  <div class="err" id="mTransferErr"></div>
+  <label>From account</label><select id="trFrom"></select>
+  <label>Destination</label>
+  <div class="form-row">
+    <div><label style="margin-top:0"><input type="radio" name="trDest" value="own" checked onchange="trDestChange()"> My own account</label></div>
+    <div><label style="margin-top:0"><input type="radio" name="trDest" value="other" onchange="trDestChange()"> Other customer</label></div>
+  </div>
+  <select id="trOwn"></select>
+  <input id="trOther" placeholder="Destination account no. e.g. SBS1000000003" style="display:none">
+  <label>Amount (₹)</label><input id="trAmt" type="number" min="1" step="0.01" placeholder="e.g. 1500">
+  <label>Note (optional)</label><input id="trNote" placeholder="e.g. Rent share">
+  <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+  <button class="btn btn-primary" onclick="submitTransfer()">Transfer</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mFd"><div class="modal">
+  <h3>Open Fixed Deposit</h3>
+  <div class="err" id="mFdErr"></div>
+  <label>Fund from account</label><select id="fdSrc"></select>
+  <label>Amount (₹) — minimum ₹1,000</label><input id="fdAmt" type="number" min="1000" step="0.01" placeholder="e.g. 25000">
+  <label>Tenure</label>
+  <select id="fdTenure" onchange="fdPreview()">
+    <option value="3">3 months</option><option value="6">6 months</option>
+    <option value="12" selected>12 months</option><option value="24">24 months</option>
+    <option value="36">36 months</option><option value="60">60 months</option>
+  </select>
+  <div class="hint" id="fdPrev" style="color:#fbbf24;margin-top:10px"></div>
+  <div class="hint">Premature closure pays only 1% p.a. Click any FD card to redeem it.</div>
+  <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModals()">Cancel</button>
+  <button class="btn btn-primary" onclick="submitFd()">Open FD</button></div>
+</div></div>
+
+<div id="toasts"></div>
+
+<script>
+const API = '';
+let ME = null;                                   /* cached /api/me data */
+
+const fmt = v => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(v);
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H = () => ({ 'Content-Type':'application/json', Authorization:'Bearer ' + localStorage.getItem('token') });
+
+function toast(msg, bad) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (bad ? ' bad' : ''); t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 4200);
+}
+function openModal(id)  { closeModals(); document.getElementById(id).classList.add('open'); }
+function closeModals()  { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open')); }
+document.querySelectorAll('.modal-overlay').forEach(m =>
+  m.addEventListener('click', e => { if (e.target === m) closeModals(); }));
+
+async function logout() {
+  try { await fetch(API + '/api/logout', { method:'POST', headers:H() }); } catch(e){}
+  localStorage.clear(); location.href = 'index.html';
+}
+
+/* ---------- load everything ---------- */
+async function loadAll() {
+  if (!localStorage.getItem('token')) { location.href = 'index.html'; return; }
+  try {
+    const r = await fetch(API + '/api/me', { headers:H() });
+    if (r.status === 401) { localStorage.clear(); location.href = 'index.html'; return; }
+    ME = await r.json();
+  } catch(e) { toast('Server unreachable — is bank.exe running?', true); return; }
+
+  document.getElementById('welcome').textContent = 'Welcome, ' + ME.user.full_name;
+  renderAccounts(); renderFds(); fillSelects(); loadTxns();
+}
+
+function operational() { return ME.accounts.filter(a => a.status !== 'closed' && a.account_type !== 'fixed_deposit'); }
+
+function renderAccounts() {
+  const g = document.getElementById('accGrid');
+  if (!ME.accounts.length) { g.innerHTML = '<div class="card muted">No accounts yet — click “Open New Account”.</div>'; return; }
+  g.innerHTML = ME.accounts.map(a => `
+    <div class="card">
+      <div class="acc-type">${esc(a.account_type.replace('_',' '))} account</div>
+      <div class="acc-num" title="Click to copy" onclick="copyNum('${esc(a.account_number)}')">${esc(a.account_number)} 📋</div>
+      <div class="balance">${fmt(a.balance)}</div>
+      <div class="meta">
+        <span>${a.account_type==='savings' ? 'Interest 3.5% p.a.' : a.account_type==='current' ? 'No interest' : 'Locked till maturity'}</span>
+        <span class="badge badge-${esc(a.status)}">${esc(a.status)}</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderFds() {
+  const g = document.getElementById('fdGrid');
+  if (!ME.fds.length) { g.innerHTML = '<div class="card muted">No fixed deposits yet.</div>'; return; }
+  g.innerHTML = ME.fds.map(f => {
+    const act = f.status === 'active';
+    return `
+    <div class="card" ${act ? `style="cursor:pointer" title="Click to close/redeem" onclick="askCloseFd(${f.id}, ${f.is_matured})"` : ''}>
+      <div class="acc-type">FD · ${esc(f.fd_account_number)} ${f.is_matured ? '⭐ MATURED' : ''}</div>
+      <div class="balance">${fmt(f.principal)}</div>
+      <div class="meta">
+        <span>${f.tenure_months} mo @ ${f.rate}% p.a.</span>
+        <span class="badge badge-${act ? 'active' : 'closed'}">${esc(f.status)}</span>
+      </div>
+      <div class="meta" style="margin-top:6px">
+        <span>Matures: ${esc(String(f.maturity_date).slice(0,10))}</span>
+        <span>Maturity value: <b style="color:#fbbf24">${fmt(f.maturity_value)}</b></span>
+      </div>
+      ${act ? '<div class="muted" style="margin-top:8px">Payout → '+esc(f.source_account_number)+'</div>' :
+              (f.payout != null ? '<div class="muted" style="margin-top:8px">Paid out: '+fmt(f.payout)+'</div>' : '')}
+    </div>`;
+  }).join('');
+}
+
+function fillSelects() {
+  const ops = operational();
+  const opt = a => `<option value="${a.id}">${esc(a.account_number)} — ${esc(a.account_type)} (${fmt(a.balance)})</option>`;
+  document.getElementById('dpAcc').innerHTML  = ops.map(opt).join('') || '<option value="">(no eligible account)</option>';
+  document.getElementById('dpAcc2').innerHTML = document.getElementById('dpAcc').innerHTML;
+  document.getElementById('trFrom').innerHTML = document.getElementById('dpAcc').innerHTML;
+  document.getElementById('trOwn').innerHTML  = ops.map(opt).join('') || '<option value="">(no eligible account)</option>';
+  document.getElementById('fdSrc').innerHTML  = document.getElementById('dpAcc').innerHTML;
+  const f = document.getElementById('txnFilter'), cur = f.value;
+  f.innerHTML = '<option value="">All accounts</option>' + ME.accounts.map(opt).join('');
+  f.value = cur;
+}
+
+async function loadTxns() {
+  const accId = document.getElementById('txnFilter').value;
+  const url = API + '/api/transactions' + (accId ? '?account_id=' + accId : '');
+  try {
+    const r = await fetch(url, { headers:H() });
+    const d = await r.json();
+    if (!r.ok) { toast(d.error, true); return; }
+    const rows = d.transactions.map(t => {
+      const isIn = t.txn_type === 'deposit' || t.txn_type === 'transfer_in';
+      const label = { deposit:'Deposit', withdrawal:'Withdrawal', transfer_in:'Transfer In',
+        transfer_out:'Transfer Out', fd_open:'FD Opened', fd_maturity:'FD Maturity', fd_premature:'FD Premature Close' }[t.txn_type] || t.txn_type;
+      return `<tr>
+        <td>${esc(t.created_at)}</td>
+        <td class="muted">${esc(t.account_number)}</td>
+        <td><span class="badge badge-txn">${label}</span></td>
+        <td>${esc(t.description)}</td>
+        <td class="muted">${esc(t.related_account || '—')}</td>
+        <td style="text-align:right" class="${isIn?'in':'out'}">${isIn?'+':'−'} ${fmt(t.amount)}</td>
+        <td style="text-align:right">${fmt(t.balance_after)}</td></tr>`;
+    });
+    document.getElementById('txnBody').innerHTML =
+      rows.length ? rows.join('') : '<tr><td colspan="7" class="muted">No transactions yet.</td></tr>';
+  } catch(e) { toast('Could not load history', true); }
+}
+
+function copyNum(n) {
+  navigator.clipboard?.writeText(n).then(() => toast('Account number copied: ' + n));
+}
+
+/* ---------- operations ---------- */
+async function submitOpenAcc() {
+  const err = document.getElementById('mOpenAccErr'); err.textContent = '';
+  const body = { account_type: document.getElementById('oaType').value,
+                 initial_deposit: parseFloat(document.getElementById('oaInit').value) || 0 };
+  const r = await fetch(API + '/api/accounts', { method:'POST', headers:H(), body:JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error; return; }
+  closeModals(); toast('Account opened: ' + d.account.account_number);
+  document.getElementById('oaInit').value = ''; loadAll();
+}
+
+async function submitMoney(endpoint, p, okMsg) {
+  const errId = p === 'dp' ? 'mDepositErr' : 'mWithdrawErr';
+  const err = document.getElementById(errId); err.textContent = '';
+  const accId = document.getElementById(p === 'dp' ? 'dpAcc' : 'dpAcc2').value;
+  const amt = parseFloat(document.getElementById(p + 'Amt').value);
+  const note = document.getElementById(p + 'Note').value.trim();
+  if (!accId) { err.textContent = 'Select an account'; return; }
+  if (!amt || amt <= 0) { err.textContent = 'Enter a valid amount'; return; }
+  const r = await fetch(API + endpoint, { method:'POST', headers:H(),
+    body:JSON.stringify({ account_id:+accId, amount:amt, note }) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error; return; }
+  closeModals();
+  toast(`${okMsg} ${fmt(amt)} — new balance ${fmt(d.balance)}`);
+  document.getElementById(p + 'Amt').value = ''; document.getElementById(p + 'Note').value = '';
+  loadAll();
+}
+
+function trDestChange() {
+  const other = document.querySelector('input[name="trDest"]:checked').value === 'other';
+  document.getElementById('trOwn').style.display = other ? 'none' : 'block';
+  document.getElementById('trOther').style.display = other ? 'block' : 'none';
+}
+
+async function submitTransfer() {
+  const err = document.getElementById('mTransferErr'); err.textContent = '';
+  const from = document.getElementById('trFrom').value;
+  const own  = document.querySelector('input[name="trDest"]:checked').value === 'own';
+  const toNum = own ? (document.getElementById('trOwn').selectedOptions[0]?.textContent.split(' — ')[0] || '')
+                    : document.getElementById('trOther').value.trim();
+  const amt = parseFloat(document.getElementById('trAmt').value);
+  const note = document.getElementById('trNote').value.trim();
+  if (!from) { err.textContent = 'Select a source account'; return; }
+  if (!toNum) { err.textContent = 'Choose a destination'; return; }
+  if (!amt || amt <= 0) { err.textContent = 'Enter a valid amount'; return; }
+  const r = await fetch(API + '/api/transfer', { method:'POST', headers:H(),
+    body:JSON.stringify({ from_account_id:+from, to_account_number:toNum, amount:amt, note }) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error; return; }
+  closeModals();
+  toast(`Sent ${fmt(amt)} to ${d.to_account_number}${d.to_name ? ' (' + d.to_name + ')' : ''} — new balance ${fmt(d.from_balance)}`);
+  document.getElementById('trAmt').value = ''; document.getElementById('trOther').value = '';
+  document.getElementById('trNote').value = ''; loadAll();
+}
+
+function fdRate(m) { return m < 6 ? 5.5 : m < 12 ? 6.25 : m < 24 ? 7 : 7.5; }
+function fdPreview() {
+  const m = +document.getElementById('fdTenure').value;
+  const a = parseFloat(document.getElementById('fdAmt').value) || 0;
+  const interest = a * fdRate(m) * m / 12 / 100;
+  document.getElementById('fdPrev').textContent =
+    `Rate ${fdRate(m)}% p.a. → at maturity you receive ≈ ${fmt(a + interest)} (interest ${fmt(interest)})`;
+}
+document.getElementById('fdAmt').addEventListener('input', fdPreview);
+
+async function submitFd() {
+  const err = document.getElementById('mFdErr'); err.textContent = '';
+  const src = document.getElementById('fdSrc').value;
+  const amt = parseFloat(document.getElementById('fdAmt').value);
+  const months = +document.getElementById('fdTenure').value;
+  if (!src) { err.textContent = 'Select a source account'; return; }
+  if (!amt || amt < 1000) { err.textContent = 'Minimum FD amount is ₹1,000'; return; }
+  const r = await fetch(API + '/api/fd', { method:'POST', headers:H(),
+    body:JSON.stringify({ source_account_id:+src, amount:amt, tenure_months:months }) });
+  const d = await r.json();
+  if (!r.ok) { err.textContent = d.error; return; }
+  closeModals(); toast(`FD opened! ${fmt(amt)} @ ${d.rate}% — matures ${String(d.maturity_date).slice(0,10)} for ${fmt(d.maturity_value)}`);
+  document.getElementById('fdAmt').value = ''; loadAll();
+}
+
+async function askCloseFd(fdId, matured) {
+  if (!confirm(matured
+    ? 'This FD has matured. Redeem it now with FULL interest into your source account?'
+    : 'This FD is NOT matured yet. Closing now pays a penalty rate of only 1% p.a. Continue?')) return;
+  const r = await fetch(API + '/api/fd/close', { method:'POST', headers:H(), body:JSON.stringify({ fd_id:fdId }) });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error, true); return; }
+  toast(`${d.matured ? 'FD matured' : 'FD closed early'} — ${fmt(d.payout)} credited to ${d.credited_to}`);
+  loadAll();
+}
+
+fdPreview();
+loadAll();
+</script>
+</body>
+</html>

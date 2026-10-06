@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Banking System — Login</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏦</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <div class="auth-card">
+
+    <!-- ══════════ LEFT — brand panel ══════════ -->
+    <div class="brand-panel">
+      <div class="brand-logo">🏦 SMART BANK</div>
+      <h1 class="brand-headline">Banking that feels<br><span class="grad-text">effortless.</span></h1>
+      <p class="brand-sub">Savings, current accounts &amp; high-yield fixed deposits — all in one secure place, powered by a C++ core.</p>
+      <ul class="features">
+        <li><span class="f-ico">🔐</span> SHA-256 secured login &amp; sessions</li>
+        <li><span class="f-ico">⚡</span> Instant transfers — even to other customers</li>
+        <li><span class="f-ico">📈</span> Fixed deposits up to 7.5% p.a.</li>
+        <li><span class="f-ico">📊</span> Live transaction history &amp; admin insights</li>
+      </ul>
+      <div class="float-card">
+        <div class="fc-label">TOTAL SAVINGS</div>
+        <div class="fc-value">₹1,24,500</div>
+        <div class="fc-trend">▲ 12.4% this quarter</div>
+      </div>
+    </div>
+
+    <!-- ══════════ RIGHT — login / signup forms ══════════ -->
+    <div class="form-panel">
+
+      <!-- LOGIN -->
+      <div id="loginView">
+        <div class="form-logo">🏦 SMART BANK</div>
+        <div class="sub">Welcome back — sign in to continue</div>
+        <div class="err" id="loginErr"></div>
+        <label>Username</label>
+        <input id="loginUser" placeholder="e.g. riya" autocomplete="username">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password">
+          <button class="pw-toggle" type="button" onclick="togglePw('loginPass',this)">👁 Show</button>
+        </div>
+        <br>
+        <button class="btn btn-primary" style="width:100%" id="loginBtn" onclick="doLogin()">Sign In →</button>
+        <div class="auth-switch">New customer? <a onclick="show('signupView','loginView')">Create an account →</a></div>
+        <div class="demo-hint">
+          <b>Demo logins</b><br>
+          Customer&nbsp;·&nbsp;riya / riya123<br>
+          Admin&nbsp;·&nbsp;admin / admin123
+        </div>
+      </div>
+
+      <!-- SIGNUP -->
+      <div id="signupView" style="display:none">
+        <div class="form-logo">🏦 SMART BANK</div>
+        <div class="sub">Open your banking profile in seconds</div>
+        <div class="err" id="signupErr"></div>
+        <label>Full name</label>
+        <input id="suName" placeholder="e.g. Priya Verma">
+        <label>Username</label>
+        <input id="suUser" placeholder="3-20 chars: letters, numbers, _">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input id="suPass" type="password" placeholder="min 4 characters">
+          <button class="pw-toggle" type="button" onclick="togglePw('suPass',this)">👁 Show</button>
+        </div>
+        <label>Confirm password</label>
+        <div class="pw-wrap">
+          <input id="suPass2" type="password" placeholder="repeat password">
+          <button class="pw-toggle" type="button" onclick="togglePw('suPass2',this)">👁 Show</button>
+        </div>
+        <br>
+        <button class="btn btn-primary" style="width:100%" id="signupBtn" onclick="doSignup()">Create Account</button>
+        <div class="auth-switch">Already registered? <a onclick="show('loginView','signupView')">← Back to login</a></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+/* if already logged in, jump straight to the right portal */
+(async () => {
+  const t = localStorage.getItem('token');
+  if (!t) return;
+  try {
+    const r = await fetch(API + '/api/me', { headers:{ Authorization:'Bearer ' + t } });
+    if (r.ok) {
+      const d = await r.json();
+      location.href = d.user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+    } else { localStorage.clear(); }
+  } catch(e) {}
+})();
+
+function show(a, b) {
+  document.getElementById(a).style.display = 'block';
+  document.getElementById(b).style.display = 'none';
+}
+function togglePw(id, btn) {                       /* the show-password toggle */
+  const el = document.getElementById(id);
+  const on = el.type === 'password';
+  el.type = on ? 'text' : 'password';
+  btn.textContent = on ? '🙈 Hide' : '👁 Show';
+}
+function busy(btn, on, txt) { btn.disabled = on; btn.textContent = txt; }
+
+async function doLogin() {
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  err.textContent = '';
+  if (!username || !password) { err.textContent = 'Enter username and password'; return; }
+  busy(btn, true, 'Signing in…');
+  try {
+    const r = await fetch(API + '/api/login', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const d = await r.json();
+    if (!r.ok) { err.textContent = d.error || 'Login failed'; return; }
+    localStorage.setItem('token', d.token);
+    localStorage.setItem('name',  d.full_name);
+    localStorage.setItem('role',  d.role);
+    location.href = d.role === 'admin' ? 'admin.html' : 'dashboard.html';
+  } catch(e) { err.textContent = 'Cannot reach server — is bank.exe running?'; }
+  finally { busy(btn, false, 'Sign In →'); }
+}
+
+async function doSignup() {
+  const err = document.getElementById('signupErr');
+  const btn = document.getElementById('signupBtn');
+  const full_name = document.getElementById('suName').value.trim();
+  const username  = document.getElementById('suUser').value.trim();
+  const password  = document.getElementById('suPass').value;
+  const password2 = document.getElementById('suPass2').value;
+  err.textContent = '';
+  if (!full_name)  { err.textContent = 'Enter your full name'; return; }
+  if (!username)   { err.textContent = 'Choose a username';    return; }
+  if (password.length < 4) { err.textContent = 'Password must be at least 4 characters'; return; }
+  if (password !== password2) { err.textContent = 'Passwords do not match'; return; }
+  busy(btn, true, 'Creating…');
+  try {
+    const r = await fetch(API + '/api/signup', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ full_name, username, password })
+    });
+    const d = await r.json();
+    if (!r.ok) { err.textContent = d.error || 'Signup failed'; return; }
+    localStorage.setItem('token', d.token);
+    localStorage.setItem('name',  d.full_name);
+    localStorage.setItem('role',  d.role);
+    location.href = 'dashboard.html';
+  } catch(e) { err.textContent = 'Cannot reach server — is bank.exe running?'; }
+  finally { busy(btn, false, 'Create Account'); }
+}
+
+/* Enter key submits */
+document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('loginUser').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+</script>
+</body>
+</html>

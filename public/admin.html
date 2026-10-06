@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Banking — Admin Console</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div><span class="logo">🏦 SMART BANK</span> <span class="who" style="margin-left:14px">Admin Console</span></div>
+  <div class="right"><button class="btn btn-ghost btn-sm" onclick="loadAdmin()">↻ Refresh</button>
+  <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button></div>
+</div>
+
+<div class="container">
+
+  <div class="section-title">Bank Overview</div>
+  <div class="stats-grid" id="stats"></div>
+
+  <div class="section-title">Visual Analytics</div>
+  <div class="charts-grid">
+    <div class="chart-box"><b style="color:#94a3b8">Accounts by Type (count)</b><canvas id="chType"></canvas></div>
+    <div class="chart-box"><b style="color:#94a3b8">Deposits by Account Type (₹)</b><canvas id="chBal"></canvas></div>
+    <div class="chart-box"><b style="color:#94a3b8">Transaction Volume by Type (₹)</b><canvas id="chTxn"></canvas></div>
+    <div class="chart-box"><b style="color:#94a3b8">Daily Activity — last 7 days</b><canvas id="chDaily"></canvas></div>
+  </div>
+
+  <div class="section-title">All Customer Accounts</div>
+  <div class="searchbar"><input id="accSearch" placeholder="Search name / username / account no…"
+    oninput="renderAccounts()"></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account No.</th><th>Type</th><th>Owner</th><th>Username</th>
+      <th style="text-align:right">Balance</th><th>Rate</th><th>Status</th><th>Opened</th><th>Action</th></tr></thead>
+      <tbody id="accBody"><tr><td colspan="9" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Recent Transactions (all customers)</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Date &amp; Time</th><th>Account</th><th>Customer</th><th>Type</th>
+      <th>Details</th><th>Related</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance After</th></tr></thead>
+      <tbody id="txnBody"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+<div id="toasts"></div>
+
+<script>
+const API = '';
+const fmt = v => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(v);
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H = () => ({ 'Content-Type':'application/json', Authorization:'Bearer ' + localStorage.getItem('token') });
+
+function toast(msg, bad) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (bad ? ' bad' : ''); t.textContent = msg;
+  document.getElementById('toasts').appendChild(t); setTimeout(() => t.remove(), 4200);
+}
+async function logout() {
+  try { await fetch(API + '/api/logout', { method:'POST', headers:H() }); } catch(e){}
+  localStorage.clear(); location.href = 'index.html';
+}
+
+let DATA = { accounts:[], transactions:[], summary:null };
+let charts = {};
+
+async function loadAdmin() {
+  if (!localStorage.getItem('token')) { location.href = 'index.html'; return; }
+  try {
+    const [s, a, t] = await Promise.all([
+      fetch(API + '/api/admin/summary',    { headers:H() }),
+      fetch(API + '/api/admin/accounts',   { headers:H() }),
+      fetch(API + '/api/admin/transactions?limit=100', { headers:H() })
+    ]);
+    if (s.status === 401 || s.status === 403) { localStorage.clear(); location.href='index.html'; return; }
+    DATA.summary    = (await s.json());
+    DATA.accounts   = (await a.json()).accounts;
+    DATA.transactions = (await t.json()).transactions;
+  } catch(e) { toast('Server unreachable — is bank.exe running?', true); return; }
+  renderStats(); renderCharts(); renderAccounts(); renderTxns();
+}
+
+function renderStats() {
+  const s = DATA.summary;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="label">Total Deposits Held</div><div class="value">${fmt(s.totals.total_deposits)}</div></div>
+    <div class="stat"><div class="label">Active Accounts</div><div class="value">${s.totals.account_count}</div></div>
+    <div class="stat"><div class="label">Customers</div><div class="value">${s.customers.customer_count}</div></div>
+    <div class="stat"><div class="label">Today's Volume</div><div class="value">${fmt(s.today.volume)}</div></div>
+    <div class="stat"><div class="label">Today's Transactions</div><div class="value">${s.today.count}</div></div>`;
+}
+
+function renderCharts() {
+  const s = DATA.summary;
+  Object.values(charts).forEach(c => c.destroy()); charts = {};
+  const common = { responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ color:'#e2e8f0' } } },
+    scales:{ x:{ ticks:{ color:'#94a3b8' }, grid:{ color:'#263349' } },
+             y:{ ticks:{ color:'#94a3b8' }, grid:{ color:'#263349' } } } };
+
+  const tl = { deposit:'Deposit', withdrawal:'Withdrawal', transfer_in:'Transfer In',
+    transfer_out:'Transfer Out', fd_open:'FD Open', fd_maturity:'FD Maturity', fd_premature:'FD Premature' };
+
+  charts.type = new Chart(document.getElementById('chType'), {
+    type:'doughnut',
+    data:{ labels: s.by_type.map(r => r.account_type.replace('_',' ')),
+      datasets:[{ data: s.by_type.map(r => r.count),
+        backgroundColor:['#34d399','#60a5fa','#fbbf24'] }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:'#e2e8f0' } } } }
+  });
+  charts.bal = new Chart(document.getElementById('chBal'), {
+    type:'bar',
+    data:{ labels: s.by_type.map(r => r.account_type.replace('_',' ')),
+      datasets:[{ label:'₹ held', data: s.by_type.map(r => r.total), backgroundColor:'#fbbf24' }] },
+    options: common
+  });
+  charts.txn = new Chart(document.getElementById('chTxn'), {
+    type:'bar',
+    data:{ labels: s.by_txn_type.map(r => tl[r.txn_type] || r.txn_type),
+      datasets:[{ label:'Volume ₹', data: s.by_txn_type.map(r => r.volume), backgroundColor:'#38bdf8' }] },
+    options: common
+  });
+  charts.daily = new Chart(document.getElementById('chDaily'), {
+    type:'line',
+    data:{ labels: s.daily.map(r => r.day),
+      datasets:[{ label:'Volume ₹', data: s.daily.map(r => r.volume), borderColor:'#34d399',
+                  backgroundColor:'rgba(52,211,153,.2)', fill:true, tension:.35 }] },
+    options: common
+  });
+}
+
+function renderAccounts() {
+  const q = document.getElementById('accSearch').value.toLowerCase();
+  const rows = DATA.accounts.filter(a =>
+    !q || a.full_name.toLowerCase().includes(q) || a.username.toLowerCase().includes(q) ||
+    a.account_number.toLowerCase().includes(q)).map(a => `
+    <tr>
+      <td style="font-family:monospace;color:#38bdf8">${esc(a.account_number)}</td>
+      <td><span class="badge badge-${esc(a.account_type)}">${esc(a.account_type.replace('_',' '))}</span></td>
+      <td>${esc(a.full_name)}</td><td class="muted">${esc(a.username)}</td>
+      <td style="text-align:right" class="in">${fmt(a.balance)}</td>
+      <td class="muted">${a.interest_rate}%</td>
+      <td><span class="badge badge-${esc(a.status)}">${esc(a.status)}</span></td>
+      <td class="muted">${esc(String(a.created_at).slice(0,10))}</td>
+      <td>${a.account_type !== 'fixed_deposit' && a.status !== 'closed'
+        ? `<button class="btn ${a.status==='active'?'btn-danger':'btn-primary'} btn-sm"
+             onclick="toggleFreeze(${a.id})">${a.status==='active'?'Freeze':'Unfreeze'}</button>`
+        : '<span class="muted">—</span>'}</td>
+    </tr>`).join('');
+  document.getElementById('accBody').innerHTML =
+    rows || '<tr><td colspan="9" class="muted">No accounts match.</td></tr>';
+}
+
+async function toggleFreeze(id) {
+  const r = await fetch(API + '/api/admin/freeze', { method:'POST', headers:H(), body:JSON.stringify({ account_id:id }) });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error, true); return; }
+  toast(`${d.account_number} is now ${d.status.toUpperCase()}`);
+  loadAdmin();
+}
+
+function renderTxns() {
+  const rows = DATA.transactions.map(t => {
+    const isIn = t.txn_type === 'deposit' || t.txn_type === 'transfer_in';
+    return `<tr>
+      <td>${esc(t.created_at)}</td>
+      <td style="font-family:monospace;color:#38bdf8">${esc(t.account_number)}</td>
+      <td>${esc(t.full_name)} <span class="muted">(${esc(t.username)})</span></td>
+      <td><span class="badge badge-txn">${esc(t.txn_type.replace('_',' '))}</span></td>
+      <td>${esc(t.description)}</td>
+      <td class="muted">${esc(t.related_account || '—')}</td>
+      <td style="text-align:right" class="${isIn?'in':'out'}">${fmt(t.amount)}</td>
+      <td style="text-align:right">${fmt(t.balance_after)}</td></tr>`;
+  }).join('');
+  document.getElementById('txnBody').innerHTML =
+    rows || '<tr><td colspan="8" class="muted">No transactions yet.</td></tr>';
+}
+
+loadAdmin();
+</script>
+</body>
+</html>
